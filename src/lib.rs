@@ -1192,6 +1192,27 @@ unsafe fn db_filename(_: *mut ffi::sqlite3) -> Option<PathBuf> {
     None
 }
 
+#[cfg(any(feature = "mc", feature = "bundled-mc"))]
+impl Connection {
+    pub fn key(&self, db: DatabaseName<'_>, key: &str) -> Result<()> {
+        use crate::ffi::sqlite3_key_v2;
+        let c = self.db.borrow_mut();
+        let db = db.as_cstring()?;
+        let k = str_to_cstring(key)?;
+        let rc = unsafe { sqlite3_key_v2(c.db(), db.as_ptr(), k.as_ptr() as *const std::os::raw::c_void, k.len() as i32) };
+        c.decode_result(rc)
+    }
+
+    pub fn rekey(&self, db: DatabaseName<'_>, key: &str) -> Result<()> {
+        use crate::ffi::sqlite3_rekey_v2;
+        let c = self.db.borrow_mut();
+        let db = db.as_cstring()?;
+        let k = str_to_cstring(key)?;
+        let rc = unsafe { sqlite3_rekey_v2(c.db(), db.as_ptr(), k.as_ptr() as *const std::os::raw::c_void, k.len() as i32) };
+        c.decode_result(rc)
+    }
+}
+
 #[cfg(doctest)]
 doc_comment::doctest!("../README.md");
 

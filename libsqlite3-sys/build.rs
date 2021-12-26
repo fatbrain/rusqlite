@@ -56,13 +56,15 @@ fn main() {
         #[cfg(any(
             feature = "bundled",
             feature = "bundled-windows",
-            feature = "bundled-sqlcipher"
+            feature = "bundled-sqlcipher",
+            feature = "bundled-mc"
         ))]
         build_bundled::main(&out_dir, &out_path);
         #[cfg(not(any(
             feature = "bundled",
             feature = "bundled-windows",
-            feature = "bundled-sqlcipher"
+            feature = "bundled-sqlcipher",
+            feature = "bundled-mc"
         )))]
         panic!("The runtime test should not run this branch, which has not compiled any logic.")
     } else {
@@ -73,7 +75,8 @@ fn main() {
 #[cfg(any(
     feature = "bundled",
     feature = "bundled-windows",
-    feature = "bundled-sqlcipher"
+    feature = "bundled-sqlcipher",
+    feature = "bundled-mc"
 ))]
 mod build_bundled {
     use std::env;
@@ -84,6 +87,7 @@ mod build_bundled {
 
     pub fn main(out_dir: &str, out_path: &Path) {
         let lib_name = super::lib_name();
+        let entry_name = super::entry_name();
 
         // This is just a sanity check, the top level `main` should ensure this.
         assert!(!(cfg!(feature = "bundled-windows") && !cfg!(feature = "bundled") && !win_target()),
@@ -92,7 +96,7 @@ mod build_bundled {
         #[cfg(feature = "buildtime_bindgen")]
         {
             use super::{bindings, HeaderLocation};
-            let header = HeaderLocation::FromPath(format!("{}/sqlite3.h", lib_name));
+            let header = HeaderLocation::FromPath(format!("{}/{}.h", lib_name, entry_name));
             bindings::write_to_out_dir(header, out_path);
         }
         #[cfg(not(feature = "buildtime_bindgen"))]
@@ -103,10 +107,18 @@ mod build_bundled {
         }
         // println!("cargo:rerun-if-changed=sqlite3/sqlite3.c");
         // println!("cargo:rerun-if-changed=sqlcipher/sqlite3.c");
-        println!("cargo:rerun-if-changed={}/sqlite3.c", lib_name);
+        println!("cargo:rerun-if-changed={}/{}.c", lib_name, entry_name);
         println!("cargo:rerun-if-changed=sqlite3/wasm32-wasi-vfs.c");
         let mut cfg = cc::Build::new();
-        cfg.file(format!("{}/sqlite3.c", lib_name))
+        cfg.file(format!("{}/{}.c", lib_name, entry_name))
+            .flag("-msse4.2")
+            .flag("-maes")
+            .flag("-DSQLITE_OMIT_LOAD_EXTENSION")
+            .flag("-DSQLITE_ENABLE_GEOPOLY")
+            .flag("-DSQLITE_ENABLE_REGEXP")
+            .flag("-DSQLITE_ENABLE_SHA3")
+            .flag("-DSQLITE_ENABLE_UUID")
+            .flag("-DSQLITE_USER_AUTHENTICATION")
             .flag("-DSQLITE_CORE")
             .flag("-DSQLITE_DEFAULT_FOREIGN_KEYS=1")
             .flag("-DSQLITE_ENABLE_API_ARMOR")
@@ -308,6 +320,8 @@ mod build_bundled {
 fn env_prefix() -> &'static str {
     if cfg!(any(feature = "sqlcipher", feature = "bundled-sqlcipher")) {
         "SQLCIPHER"
+    } else if cfg!(any(feature = "mc", feature = "bundled-mc")) {
+        "SQLITE3MC"
     } else {
         "SQLITE3"
     }
@@ -318,6 +332,16 @@ fn lib_name() -> &'static str {
         "sqlcipher"
     } else if cfg!(all(windows, feature = "winsqlite3")) {
         "winsqlite3"
+    } else if cfg!(any(feature = "mc", feature = "bundled-mc")) {
+        "mc"
+    } else {
+        "sqlite3"
+    }
+}
+
+fn entry_name() -> &'static str {
+    if cfg!(any(feature = "mc", feature = "bundled-mc")) {
+        "sqlite3mc"
     } else {
         "sqlite3"
     }
@@ -353,7 +377,7 @@ mod build_linked {
     #[cfg(feature = "vcpkg")]
     extern crate vcpkg;
 
-    use super::{bindings, env_prefix, is_compiler, lib_name, win_target, HeaderLocation};
+    use super::{bindings, env_prefix, is_compiler, lib_name, entry_name, win_target, HeaderLocation};
     use std::env;
     use std::path::Path;
 
@@ -392,6 +416,7 @@ mod build_linked {
     // Prints the necessary cargo link commands and returns the path to the header.
     fn find_sqlite() -> HeaderLocation {
         let link_lib = lib_name();
+        let entry_name = entry_name();
 
         println!("cargo:rerun-if-env-changed={}_INCLUDE_DIR", env_prefix());
         println!("cargo:rerun-if-env-changed={}_LIB_DIR", env_prefix());
@@ -434,7 +459,7 @@ mod build_linked {
             .probe(link_lib)
         {
             if let Some(mut header) = lib.include_paths.pop() {
-                header.push("sqlite3.h");
+                header.push(format!("{}.h", entry_name));
                 HeaderLocation::FromPath(header.to_string_lossy().into())
             } else {
                 HeaderLocation::Wrapper
@@ -454,7 +479,7 @@ mod build_linked {
             // See if vcpkg can find it.
             if let Ok(mut lib) = vcpkg::Config::new().probe(lib_name()) {
                 if let Some(mut header) = lib.include_paths.pop() {
-                    header.push("sqlite3.h");
+                    header.push(format!("{}.h", entry_name()));
                     return Some(HeaderLocation::FromPath(header.to_string_lossy().into()));
                 }
             }
@@ -534,6 +559,9 @@ mod bindings {
             .parse_callbacks(Box::new(SqliteTypeChooser))
             .rustfmt_bindings(true);
 
+        if cfg!(any(feature = "mc", feature = "bundled-mc")) {
+            bindings = bindings.clang_arg("-march=native");
+        }
         if cfg!(any(feature = "sqlcipher", feature = "bundled-sqlcipher")) {
             bindings = bindings.clang_arg("-DSQLITE_HAS_CODEC");
         }

@@ -205,6 +205,9 @@ pub struct Blob<'conn> {
     pos: i32,
 }
 
+unsafe impl<'conn> Send for Blob<'conn> {}
+unsafe impl<'conn> Sync for Blob<'conn> {}
+
 impl Connection {
     /// Open a handle to the BLOB located in `row_id`,
     /// `column`, `table` in database `db`.

@@ -386,7 +386,8 @@ mod build_linked {
         if (cfg!(any(
             feature = "bundled_bindings",
             feature = "bundled",
-            feature = "bundled-sqlcipher"
+            feature = "bundled-sqlcipher",
+            feature = "bundled-mc"
         )) || (win_target() && cfg!(feature = "bundled-windows")))
             && !cfg!(feature = "buildtime_bindgen")
         {

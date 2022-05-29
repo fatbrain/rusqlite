@@ -341,7 +341,7 @@ fn lib_name() -> &'static str {
 
 fn entry_name() -> &'static str {
     if cfg!(any(feature = "mc", feature = "bundled-mc")) {
-        "sqlite3mc"
+        "sqlite3mc_amalgamation"
     } else {
         "sqlite3"
     }
